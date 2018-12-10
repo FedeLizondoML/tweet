@@ -6,13 +6,15 @@ import (
 )
 
 type TweetManager struct {
-	tweets []domain.Tweet
-	tweetsByUser map[string][]domain.Tweet
+	tweets []domain.Tweet `json:"tweets"`
+	tweetsByUser map[string][]domain.Tweet `json:"tweets_by_user"`
+	tweetWriter TweetWriter
 }
 
-func NewTweetManager() *TweetManager {
+func NewTweetManager(writer TweetWriter) *TweetManager {
 	tweetManager := &TweetManager{}
 	tweetManager.InitializeService()
+	tweetManager.tweetWriter = writer
 	return tweetManager
 }
 
@@ -31,15 +33,23 @@ func (tweetManager *TweetManager) PublishTweet(tweetToPublish domain.Tweet) (int
 		return -1,fmt.Errorf("text has more characters than permited")
 	}
 
-	id := len(tweetManager.tweets)
-	tweetToPublish.SetId(id)
-	tweetManager.tweets = append(tweetManager.tweets,tweetToPublish)
-	tweetManager.addTweetToUser(tweetToPublish.GetUser(),tweetToPublish)
+	id := tweetManager.saveTweet(tweetToPublish)
 
 	return id,nil
 }
 
-func (tweetManager *TweetManager) addTweetToUser(user string, tweet domain.Tweet)  {
+func (tweetManager *TweetManager) saveTweet( tweet domain.Tweet) int  {
+
+	id := len(tweetManager.tweets)
+	tweet.SetId(id)
+	tweetManager.tweets = append(tweetManager.tweets,tweet)
+	tweetManager.addTweetToUser(tweet)
+	tweetManager.tweetWriter.Write(tweet)
+	return id
+}
+
+func (tweetManager *TweetManager) addTweetToUser(tweet domain.Tweet)  {
+	user := tweet.GetUser()
 	value,exist := tweetManager.tweetsByUser[user]
 
 	if ! exist {
@@ -48,6 +58,9 @@ func (tweetManager *TweetManager) addTweetToUser(user string, tweet domain.Tweet
 
 	tweetManager.tweetsByUser[user] = append( value, tweet )
 }
+
+
+
 
 func (tweetManager *TweetManager) GetTweetById(id int) domain.Tweet{
 	for _,x := range tweetManager.tweets{
@@ -91,5 +104,22 @@ func (tweetManager *TweetManager) InitializeService() {
 
 func (tweetManager *TweetManager) GetTweetsByUser(user string)[]domain.Tweet{
 	return tweetManager.tweetsByUser[user]
+}
+
+func (tweetManager *TweetManager)SearchTweetsContaining(query string,chanel chan domain.Tweet,quit chan bool){
+
+	go func(){
+		for _,tweet := range tweetManager.tweets{
+			tweetManager.searchStringInQueryAndPutInChannel(query,tweet,chanel)
+		}
+		quit<-true
+	}()
+}
+
+func (tweetManager *TweetManager)searchStringInQueryAndPutInChannel(query string,tweet domain.Tweet,chanel chan domain.Tweet){
+	if tweet.FindTextInTweet(query){
+		chanel <- tweet
+	}
+
 }
 

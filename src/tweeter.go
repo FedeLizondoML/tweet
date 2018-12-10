@@ -1,14 +1,19 @@
 package main
 
 import (
+	"fmt"
 	"github.com/abiosoft/ishell"
+	"github.com/gin-gonic/gin"
 	"github.com/tweet/src/domain"
 	"github.com/tweet/src/service"
+	"net/http"
 	"strconv"
 )
 
 func main() {
-	tweetManager := service.NewTweetManager()
+	tweeterWriter:= service.NewMemoryTweetWriter()
+	tweetManager := service.NewTweetManager( tweeterWriter )
+	go launchServer(tweetManager)
 	shell := ishell.New()
 	shell.SetPrompt("Tweeter >> ")
 	shell.Print("Type 'help' to know commands\n")
@@ -131,5 +136,48 @@ func main() {
 	})
 
 	shell.Run()
+
+}
+
+func launchServer(manager *service.TweetManager){
+	router := gin.Default()
+
+	router.GET("tweets/:usuario", func(context *gin.Context) {
+		parametro := context.Param("usuario")
+		response := ""
+		for _,tweet := range manager.GetTweetsByUser(parametro){
+			response += tweet.String() + "\n"
+		}
+		//context.String(http.StatusOK, response )
+		context.JSON(http.StatusOK,manager.GetTweetsByUser(parametro))
+	})
+
+	router.GET("tweets", showAllTweets(manager) )
+
+	router.POST("tweet",addTextTweet(manager))
+
+	err := router.Run()
+	fmt.Print(err)
+}
+
+func showAllTweets( manager *service.TweetManager )gin.HandlerFunc{
+	return gin.HandlerFunc(
+		func( c *gin.Context ){
+			tweets := manager.GetTweets()
+			c.JSON(http.StatusOK,tweets)
+			})
+}
+
+func addTextTweet( manager *service.TweetManager )gin.HandlerFunc{
+	return gin.HandlerFunc(func(c *gin.Context) {
+		tweet := &domain.TextTweet{}
+		_,err := manager.PublishTweet(tweet)
+		if err != nil{
+			c.JSON(http.StatusNotFound,"Error")
+		}else{
+			c.JSON(http.StatusOK ,tweet)
+		}
+
+	})
 
 }

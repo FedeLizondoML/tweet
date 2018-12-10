@@ -1,5 +1,7 @@
 package domain_test
 
-func TestUsuarioVacio()  {
-	
+import "testing"
+
+func TestUsuarioVacio(t *testing.T)  {
+
 }

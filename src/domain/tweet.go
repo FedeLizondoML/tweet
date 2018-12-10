@@ -13,4 +13,5 @@ type Tweet interface {
 	UserIsEmpty() bool
 	TextIsEmpty() bool
 	TextHasMoreCharactersThanMaxCharactersPerTweet() bool
+	FindTextInTweet( string ) bool
 }

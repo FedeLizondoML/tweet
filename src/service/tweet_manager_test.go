@@ -3,6 +3,7 @@ package service_test
 import (
 	"github.com/tweet/src/domain"
 	"github.com/tweet/src/service"
+	"strings"
 	"testing"
 )
 
@@ -12,7 +13,7 @@ func TestPublishedTweetIsSave(  t *testing.T ){
 	text := "This is my first tweet"
 	tweet = domain.NewTextTweet(user, text)
 
-	tweetManager := service.NewTweetManager()
+	tweetManager := service.NewTweetManager( service.NewMemoryTweetWriter() )
 
 	_,_ = tweetManager.PublishTweet(tweet)
 
@@ -33,7 +34,7 @@ func TestTweetWithoutUserIsNotPublished(t *testing.T){
 	var user string
 	text := "This is my first tweet"
 	tweet = domain.NewTextTweet(user, text)
-	tweetManager := service.NewTweetManager()
+	tweetManager := service.NewTweetManager( service.NewMemoryTweetWriter() )
 
 	var err error
 	_,err = tweetManager.PublishTweet(tweet)
@@ -45,7 +46,7 @@ func TestTweetWithoutUserIsNotPublished(t *testing.T){
 
 func TestTweetWithoutTextIsNotPublished( t *testing.T ){
 	var tweet domain.Tweet
-	tweetManager := service.NewTweetManager()
+	tweetManager := service.NewTweetManager(service.NewMemoryTweetWriter())
 	user := "fede"
 	var text string
 	tweet = domain.NewTextTweet(user, text)
@@ -66,7 +67,7 @@ func TestTweetWitchExceeding140CharactersIsNotPublished(t *testing.T) {
 	text := "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec ante erat, commodo at dignissim ac, vehicula ac eros. In viverra sed nibh ac cras amet."
 	tweet = domain.NewTextTweet(user, text)
 
-	tweetManager := service.NewTweetManager()
+	tweetManager := service.NewTweetManager(service.NewMemoryTweetWriter())
 	var err error
 	_,err = tweetManager.PublishTweet(tweet)
 
@@ -76,7 +77,7 @@ func TestTweetWitchExceeding140CharactersIsNotPublished(t *testing.T) {
 }
 
 func TestCanPublishAndRetriveMoreThanOneTweet(t *testing.T) {
-	tweetManager := service.NewTweetManager()
+	tweetManager := service.NewTweetManager(service.NewMemoryTweetWriter())
 	var tweet,secondTweet domain.Tweet
 
 	tweet = domain.NewTextTweet("fede","primerTweet")
@@ -94,7 +95,6 @@ func TestCanPublishAndRetriveMoreThanOneTweet(t *testing.T) {
 	firstPublishTweet := publishTweets[0]
 	secondPublishTweet := publishTweets[1]
 
-
 	if !areValidTweet(t,firstPublishTweet,tweet){
 		t.Errorf("Expected tweet is user %s and text %s but was user %s and text %s",
 			tweet.GetUser(),tweet.GetText(),firstPublishTweet.GetUser(),firstPublishTweet.GetText())
@@ -106,12 +106,11 @@ func TestCanPublishAndRetriveMoreThanOneTweet(t *testing.T) {
 			secondTweet.GetUser(),secondTweet.GetText(),secondPublishTweet.GetUser(),secondPublishTweet.GetText())
 		return
 	}
-
 }
 
 
 func TestCanRetriveTweetById(t *testing.T){
-	tweetManager := service.NewTweetManager()
+	tweetManager := service.NewTweetManager(service.NewMemoryTweetWriter())
 
 	user := "Marco Polo"
 	text := "tweet"
@@ -128,9 +127,8 @@ func TestCanRetriveTweetById(t *testing.T){
 	}
 }
 
-
 func TestCanCountThewTweetsSentByAnUser(t *testing.T){
-	tweetManager := service.NewTweetManager()
+	tweetManager := service.NewTweetManager(service.NewMemoryTweetWriter())
 	user := "Marco"
 	anotherUser := "Pedro"
 	text1 := "text1"
@@ -154,7 +152,7 @@ func TestCanCountThewTweetsSentByAnUser(t *testing.T){
 
 func TestCanRetrieveTheTweetsSentByAnUser(t *testing.T) {
 	// Initialization
-	tweetManager := service.NewTweetManager()
+	tweetManager := service.NewTweetManager(service.NewMemoryTweetWriter())
 
 	user := "grupoesfera"
 	anotherUser := "nick"
@@ -198,6 +196,68 @@ func TestCanRetrieveTheTweetsSentByAnUser(t *testing.T) {
 		return
 	}
 
+}
+
+func TestPublishedTweetIsSavedToExternalResource(t *testing.T) {
+
+	// Initialization
+	var tweetWriter service.TweetWriter
+	tweetWriter = service.NewMemoryTweetWriter() // Mock implementation
+	tweetManager := service.NewTweetManager(tweetWriter)
+
+	var tweet domain.Tweet // Fill the tweet with data
+	tweet = domain.NewTextTweet("Marco","Polo")
+
+	// Operation
+	id, _ := tweetManager.PublishTweet(tweet)
+
+	// Validation
+	memoryWriter := (tweetWriter).(*service.MemoryTweetWriter)
+	savedTweet := memoryWriter.GetLastSavedTweet()
+
+	if savedTweet == nil {
+		t.Error("Expected tweet not to be empty")
+	}
+
+	if savedTweet.GetId() != id {
+		t.Errorf("Expected id to be %d but was %d",id,savedTweet.GetId())
+	}
+}
+
+
+func TestCanSearchForTweetContainingText(t *testing.T) {
+	// Initialization
+	var tweetWriter service.TweetWriter
+	tweetWriter = service.NewMemoryTweetWriter()
+	tweetManager := service.NewTweetManager(tweetWriter)
+
+	// Create and publish a tweet
+	tweetManager.PublishTweet( domain.NewTextTweet("Marco","zero tweet") )
+	tweetManager.PublishTweet( domain.NewTextTweet("Marco","first tweet") )
+	tweetManager.PublishTweet( domain.NewTextTweet("Marco","Error tweet") )
+
+	// Operation
+	searchResult := make(chan domain.Tweet)
+
+	//defer close(searchResult)
+	quit := make(chan bool)
+
+	//defer close(quit)
+	query := "first"
+	tweetManager.SearchTweetsContaining(query, searchResult,quit)
+
+	// Validation
+	select{
+	 	case foundTweet := <-searchResult:
+			if foundTweet == nil {
+				t.Error("Expected tweet not to be empty")
+			}
+			if !strings.Contains(foundTweet.GetText(), query) {
+				t.Errorf("Expected to be found %s in %s",query,foundTweet.GetText())
+			}
+	 	case <-quit:
+				t.Error("Quit before find")
+	}
 }
 
 func isValidTweet(t *testing.T,tweet domain.Tweet,user string,text string)bool{

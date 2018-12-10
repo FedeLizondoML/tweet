@@ -7,10 +7,10 @@ import (
 )
 
 type TextTweet struct {
-	Id int
-	User string
-	Text string
-	Date *time.Time
+	Id int `json:"id"`
+	User string `json:"user"`
+	Text string `json:"text"`
+	Date *time.Time `json:"date"`
 }
 
 const MAX_CHARACTERS_PER_TWEET int = 140
@@ -66,4 +66,8 @@ func (tweet *TextTweet) SetId(id int) {
 
 func (tweet *TextTweet) GetDate() *time.Time{
 	return tweet.Date
+}
+
+func (tweet *TextTweet)FindTextInTweet( query string ) bool{
+	return strings.Contains(tweet.Text, query)
 }
